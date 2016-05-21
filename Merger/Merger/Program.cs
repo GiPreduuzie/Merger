@@ -8,9 +8,14 @@ namespace Merger
 {
     public class MessagesGenerator
     {
-        public string NameConflict(string leftName, string rightName)
+        public string VariableHasBeenRenamedDifferently(string leftName, string rightName)
         {
             return string.Format("{0} <-> {1}", leftName, rightName);
+        }
+
+        public string VariablesHaveBeenRenamedWithConflict(string oldName, string newName)
+        {
+            return string.Format("{0} <-> {1}", oldName, newName);
         }
     }
 
@@ -51,18 +56,38 @@ namespace Merger
                 var rightRename = rightCommand as RenameCommand;
 
                 if (leftRename.ClassFullName == rightRename.ClassFullName
-                    && leftRename.Method == rightRename.Method
-                    && leftRename.Variable == rightRename.Variable)
+                    && leftRename.Method == rightRename.Method)
                 {
-                    if (leftRename.NewName == rightRename.NewName)
+                    if (leftRename.Variable == rightRename.Variable)
                     {
-                        return new List<Command> { leftRename };
+                        if (leftRename.NewName == rightRename.NewName)
+                        {
+                            return new List<Command> { leftRename };
+                        }
+                        else
+                        {
+                            var selectedName = dialog.Ask(new MessagesGenerator().VariableHasBeenRenamedDifferently(leftRename.NewName, rightRename.NewName));
+                            var result = new RenameCommand(leftRename.ClassFullName, leftRename.Method, leftRename.Variable, selectedName);
+                            return new List<Command> { result };
+                        }
                     }
                     else
                     {
-                        var selectedName = dialog.Ask(new MessagesGenerator().NameConflict(leftRename.NewName, rightRename.NewName));
-                        var result = new RenameCommand(leftRename.ClassFullName, leftRename.Method, leftRename.Variable, selectedName);
-                        return new List<Command> { result };
+                        if (leftRename.NewName == rightRename.NewName)
+                        {
+                            var newLeftName = dialog.Ask(new MessagesGenerator().VariablesHaveBeenRenamedWithConflict(leftRename.Variable, leftRename.NewName));
+                            var newRightName = dialog.Ask(new MessagesGenerator().VariablesHaveBeenRenamedWithConflict(rightRename.Variable, rightRename.NewName));
+
+                            if (newLeftName == newRightName) throw new Exception();
+
+                            return new List<Command> {
+                            new RenameCommand(leftRename.ClassFullName, leftRename.Method, leftRename.Variable, newLeftName),
+                            new RenameCommand(rightRename.ClassFullName, rightRename.Method, rightRename.Variable, newRightName) };
+                        }
+                        else
+                        {
+                            return new List<Command> { leftCommand, rightCommand };
+                        }
                     }
                 }
                 else
@@ -70,8 +95,10 @@ namespace Merger
                     return new List<Command> { leftCommand, rightCommand };
                 }
             }
-
-            throw new Exception();
+            else
+            {
+                throw new Exception();
+            }
         }
     }
 

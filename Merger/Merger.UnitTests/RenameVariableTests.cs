@@ -56,24 +56,44 @@ namespace Merger.UnitTests
 
     public class UserQuestion
     {
+        private IEnumerable<KeyValuePair<string, string>> _result;
+
+        public UserQuestion(IEnumerable<KeyValuePair<string, string>> result)
+        {
+            _result = result;
+        }
+
         public UserDialog NotAsked { get { return new UserDialog(new List<KeyValuePair<string, string>>()); } }
 
         public UserAnswer BeingAsked(string question)
         {
-            return new UserAnswer(question);
+            return new UserAnswer(question, _result);
+        }
+
+        public UserDialog Done()
+        {
+            return new UserDialog(_result);
         }
     }
 
     public class UserAnswer
     {
-        public UserAnswer(string question)
+        private IEnumerable<KeyValuePair<string, string>> _result;
+
+        public UserAnswer(string question, IEnumerable<KeyValuePair<string, string>> result)
         {
             Question = question;
+            _result = result;
         }
 
         public string Question { get; private set; }
 
-        public UserDialog Answer(string answer) { return new UserDialog(new List<KeyValuePair<string, string>>() { new KeyValuePair<string, string>(Question, answer)}); }
+        public UserQuestion Answer(string answer)
+        {
+            var result = new List<KeyValuePair<string, string>>() { new KeyValuePair<string, string>(Question, answer) };
+            
+            return new UserQuestion(_result.Concat(result));
+        }
     }
 
    
@@ -152,7 +172,7 @@ namespace Merger.UnitTests
     {
         public Library Library => new Library();
         public Commands Commands { get { return new Commands(); } }
-        public UserQuestion User { get { return new UserQuestion(); } }
+        public UserQuestion User { get { return new UserQuestion(new List<KeyValuePair<string, string>>()); } }
         public MessagesGenerator MessagesGenerator { get { return new MessagesGenerator(); } }
         public Utility Utility { get { return new Utility(); } }
     }
@@ -171,8 +191,11 @@ namespace Merger.UnitTests
                 .ForkBranches()
                 .AddLeft(Commands.Rename("GeneralCase", "Method", "variable", "variable1"))
                 .AddRight(Commands.Rename("GeneralCase", "Method", "variable", "variable2"))
-                .MergeBranches(User.NotAsked)
-                //.MergeBranches(User.BeingAsked(MessagesGenerator.NameConflict("variable1", "variable2")).Answer("variable3"))
+                .MergeBranches(
+                    User
+                        .BeingAsked(MessagesGenerator.VariableHasBeenRenamedDifferently("variable1", "variable2"))
+                        .Answer("variable3")
+                        .Done())
                 .Code;
 
             Assert.AreEqual(Utility.ApplyCommand(startCode.Code, Commands.Rename("GeneralCase", "Method", "variable", "variable3")), resultCode);
@@ -198,6 +221,34 @@ namespace Merger.UnitTests
                     startCode.Code,
                     Commands.Rename("GeneralCase", "Method", "variable", "variable1"),
                     Commands.Rename("GeneralCase", "Method", "tail", "tail1")),
+                resultCode);
+        }
+
+        [TestMethod]
+        public void Rename2Variables_Confilct()
+        {
+            var startCode = Library.GetCode("Ex_1");
+
+            var resultCode =
+
+            startCode
+                .ForkBranches()
+                .AddLeft(Commands.Rename("GeneralCase", "Method", "variable", "variable1"))
+                .AddRight(Commands.Rename("GeneralCase", "Method", "tail", "variable1"))
+                .MergeBranches(
+                   User
+                       .BeingAsked(MessagesGenerator.VariablesHaveBeenRenamedWithConflict("variable", "variable1"))
+                       .Answer("variable1")
+                       .BeingAsked(MessagesGenerator.VariablesHaveBeenRenamedWithConflict("tail", "variable1"))
+                       .Answer("tail2")
+                       .Done())
+                .Code;
+
+            Assert.AreEqual(
+                Utility.ApplyCommands(
+                    startCode.Code,
+                    Commands.Rename("GeneralCase", "Method", "variable", "variable1"),
+                    Commands.Rename("GeneralCase", "Method", "tail", "tail2")),
                 resultCode);
         }
     }
