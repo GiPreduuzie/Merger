@@ -14,24 +14,11 @@ namespace Merger
         }
     }
 
-    public class UserDialog
+    public interface ITalkWithUser
     {
-        public UserDialog(string question, string answer)
-        {
-            Question = question;
-            Answer = answer;
-        }
-
-        public string Question { get; private set; }
-        public string Answer { get; private set; }
-
-        internal string Ask(string question)
-        {
-            if (Question == question) return Answer;
-
-            throw new Exception();
-        }
+        string Ask(string question);
     }
+
 
     public class Command
     {
@@ -56,7 +43,7 @@ namespace Merger
 
     public class ConflictResolver
     {
-        public List<Command> ResolveConflict(UserDialog dialog, Command leftCommand, Command rightCommand)
+        public List<Command> ResolveConflict(ITalkWithUser dialog, Command leftCommand, Command rightCommand)
         {
             if (leftCommand is RenameCommand && rightCommand is RenameCommand)
             {

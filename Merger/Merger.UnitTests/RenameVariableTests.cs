@@ -6,8 +6,39 @@ using System.Linq;
 
 namespace Merger.UnitTests
 {
+    public class UserDialog : ITalkWithUser
+    {
+        private IEnumerable<KeyValuePair<string, string>> _replics;
+        private IEnumerator<KeyValuePair<string, string>> _replicsEnumerator;
+
+        public UserDialog(IEnumerable<KeyValuePair<string, string>> replics)
+        {
+            _replics = replics;
+            _replicsEnumerator = _replics.GetEnumerator();
+        }
+
+        public string Ask(string question)
+        {
+            _replicsEnumerator.MoveNext();
+            var replic = _replicsEnumerator.Current;
+            Assert.AreEqual(replic.Key, question);
+
+            return replic.Value;
+        }
+
+        internal void Completed()
+        {
+            Assert.IsFalse(_replicsEnumerator.MoveNext());
+        }
+    }
+
     public class Utility
     {
+        internal string ApplyCommands(string code, params Command[] commands)
+        {
+            return commands.Aggregate(code, (accum, command) => ApplyCommand(accum, command));
+        }
+
         internal string ApplyCommand(string code, Command command)
         {
             if (command is RenameCommand)
@@ -21,10 +52,12 @@ namespace Merger.UnitTests
         }
     }
 
-  
+
 
     public class UserQuestion
     {
+        public UserDialog NotAsked { get { return new UserDialog(new List<KeyValuePair<string, string>>()); } }
+
         public UserAnswer BeingAsked(string question)
         {
             return new UserAnswer(question);
@@ -39,7 +72,8 @@ namespace Merger.UnitTests
         }
 
         public string Question { get; private set; }
-        public UserDialog Answer(string answer) { return new UserDialog(Question, answer); }
+
+        public UserDialog Answer(string answer) { return new UserDialog(new List<KeyValuePair<string, string>>() { new KeyValuePair<string, string>(Question, answer)}); }
     }
 
    
@@ -98,10 +132,11 @@ namespace Merger.UnitTests
             var rightCommand = _rightCommands.Single();
 
             var commands = new ConflictResolver().ResolveConflict(dialog, leftCommand, rightCommand);
+            dialog.Completed();
 
             var utility = new Utility();
 
-            return new CodeManager(commands.Aggregate(_code, (accum, command) => utility.ApplyCommand(accum, command)));
+            return new CodeManager(utility.ApplyCommands(_code, commands.ToArray()));
         }
     }
 
@@ -136,7 +171,8 @@ namespace Merger.UnitTests
                 .ForkBranches()
                 .AddLeft(Commands.Rename("GeneralCase", "Method", "variable", "variable1"))
                 .AddRight(Commands.Rename("GeneralCase", "Method", "variable", "variable2"))
-                .MergeBranches(User.BeingAsked(MessagesGenerator.NameConflict("variable1", "variable2")).Answer("variable3"))
+                .MergeBranches(User.NotAsked)
+                //.MergeBranches(User.BeingAsked(MessagesGenerator.NameConflict("variable1", "variable2")).Answer("variable3"))
                 .Code;
 
             Assert.AreEqual(Utility.ApplyCommand(startCode.Code, Commands.Rename("GeneralCase", "Method", "variable", "variable3")), resultCode);
@@ -153,10 +189,16 @@ namespace Merger.UnitTests
                 .ForkBranches()
                 .AddLeft(Commands.Rename("GeneralCase", "Method", "variable", "variable1"))
                 .AddRight(Commands.Rename("GeneralCase", "Method", "tail", "tail1"))
-                .MergeBranches(User.BeingAsked(MessagesGenerator.NameConflict("variable1", "variable2")).Answer("variable3"))
+                .MergeBranches(User.NotAsked)
                 .Code;
 
-            Assert.AreEqual(Utility.ApplyCommand(startCode.Code, Commands.Rename("GeneralCase", "Method", "variable", "variable3")), resultCode);
+            Assert.AreEqual(
+                
+                Utility.ApplyCommands(
+                    startCode.Code,
+                    Commands.Rename("GeneralCase", "Method", "variable", "variable1"),
+                    Commands.Rename("GeneralCase", "Method", "tail", "tail1")),
+                resultCode);
         }
     }
 }
