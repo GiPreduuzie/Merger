@@ -8,8 +8,8 @@ namespace Merger.UnitTests
 {
     public class UserDialog : ITalkWithUser
     {
-        private IEnumerable<KeyValuePair<string, string>> _replics;
-        private IEnumerator<KeyValuePair<string, string>> _replicsEnumerator;
+        private readonly IEnumerable<KeyValuePair<string, string>> _replics;
+        private readonly IEnumerator<KeyValuePair<string, string>> _replicsEnumerator;
 
         public UserDialog(IEnumerable<KeyValuePair<string, string>> replics)
         {
@@ -36,7 +36,7 @@ namespace Merger.UnitTests
     {
         internal string ApplyCommands(string code, params Command[] commands)
         {
-            return commands.Aggregate(code, (accum, command) => ApplyCommand(accum, command));
+            return commands.Aggregate(code, ApplyCommand);
         }
 
         internal string ApplyCommand(string code, Command command)
@@ -48,6 +48,35 @@ namespace Merger.UnitTests
                 return code.Replace(renameCommand.Variable, renameCommand.NewName);
             }
 
+            if (command is MoveMethodCommand)
+            {
+                var lines = code.Replace("\r\n", "\n").Split('\n').ToArray();
+
+                var head = lines.Take(4);
+                var tail = new List<string> { lines.Last()};
+
+                var method1 = lines.Skip(4).Take(5).ToArray();
+                var emptyLine = new List<string> { lines[9]};
+                var method2 = lines.Skip(10).Take(5).ToArray();
+
+                var name1 = method1[0].Split(' ', '(', ')').Where(x => x != "").ElementAt(2);
+                var name2 = method2[0].Split(' ', '(', ')').Where(x => x != "").ElementAt(2);
+
+                var moveMethodCommand = command as MoveMethodCommand;
+
+                var ordered1 = method1;
+                var ordered2 = method2;
+
+                if (moveMethodCommand.Method == name2)
+                {
+                    ordered1 = method2;
+                    ordered2 = method1;
+                }
+
+                var result = string.Join(Environment.NewLine, head.Concat(ordered1).Concat(emptyLine).Concat(ordered2).Concat(tail));
+                return result;
+            }
+
             throw new Exception();
         }
     }
@@ -56,7 +85,7 @@ namespace Merger.UnitTests
 
     public class UserQuestion
     {
-        private IEnumerable<KeyValuePair<string, string>> _result;
+        private readonly IEnumerable<KeyValuePair<string, string>> _result;
 
         public UserQuestion(IEnumerable<KeyValuePair<string, string>> result)
         {
@@ -78,7 +107,7 @@ namespace Merger.UnitTests
 
     public class UserAnswer
     {
-        private IEnumerable<KeyValuePair<string, string>> _result;
+        private readonly IEnumerable<KeyValuePair<string, string>> _result;
 
         public UserAnswer(string question, IEnumerable<KeyValuePair<string, string>> result)
         {
@@ -104,7 +133,14 @@ namespace Merger.UnitTests
         {
             return new RenameCommand(classFullName, method, variable, newName);
         }
+
+        public Command MoveMethodUp(string classFullName, string methodb)
+        {
+            return new MoveMethodCommand(classFullName, methodb, true);
+        }
     }
+
+ 
 
     public class CodeManager
     {
@@ -125,9 +161,9 @@ namespace Merger.UnitTests
 
     public class BranchesManager
     {
-        private string _code;
-        public List<Command> _leftCommands = new List<Command>();
-        public List<Command> _rightCommands = new List<Command>();
+        private readonly string _code;
+        public List<Command> LeftCommands = new List<Command>();
+        public List<Command> RightCommands = new List<Command>();
 
         public BranchesManager(string code)
         {
@@ -136,20 +172,20 @@ namespace Merger.UnitTests
 
         public BranchesManager AddLeft(Command command)
         {
-            _leftCommands.Add(command);
+            LeftCommands.Add(command);
             return this;
         }
 
         public BranchesManager AddRight(Command command)
         {
-            _rightCommands.Add(command);
+            RightCommands.Add(command);
             return this;
         }
 
         public CodeManager MergeBranches(UserDialog dialog)
         {
-            var leftCommand = _leftCommands.Single();
-            var rightCommand = _rightCommands.Single();
+            var leftCommand = LeftCommands.Single();
+            var rightCommand = RightCommands.Single();
 
             var commands = new ConflictResolver().ResolveConflict(dialog, leftCommand, rightCommand);
             dialog.Completed();
@@ -171,10 +207,10 @@ namespace Merger.UnitTests
     public class TestBase
     {
         public Library Library => new Library();
-        public Commands Commands { get { return new Commands(); } }
-        public UserQuestion User { get { return new UserQuestion(new List<KeyValuePair<string, string>>()); } }
+        public Commands Commands => new Commands();
+        public UserQuestion User => new UserQuestion(new List<KeyValuePair<string, string>>());
         public MessagesGenerator MessagesGenerator { get { return new MessagesGenerator(); } }
-        public Utility Utility { get { return new Utility(); } }
+        public Utility Utility => new Utility();
     }
 
     [TestClass]
@@ -249,6 +285,31 @@ namespace Merger.UnitTests
                     startCode.Code,
                     Commands.Rename("GeneralCase", "Method", "variable", "variable1"),
                     Commands.Rename("GeneralCase", "Method", "tail", "tail2")),
+                resultCode);
+        }
+
+        [TestMethod]
+        public void MoveMethodUp()
+        {
+            var startCode = Library.GetCode("Ex_2");
+
+            var methodUp = Commands.MoveMethodUp("GeneralCase", "MethodB");
+            var rename = Commands.Rename("GeneralCase", "MethodB", "variable", "variable1");
+
+            var resultCode =
+
+            startCode
+                .ForkBranches()
+                .AddLeft(methodUp)
+                .AddRight(rename)
+                .MergeBranches(User.NotAsked)
+                .Code;
+
+            Assert.AreEqual(
+                Utility.ApplyCommands(
+                    startCode.Code,
+                    methodUp,
+                    rename),
                 resultCode);
         }
     }

@@ -10,12 +10,12 @@ namespace Merger
     {
         public string VariableHasBeenRenamedDifferently(string leftName, string rightName)
         {
-            return string.Format("{0} <-> {1}", leftName, rightName);
+            return $"{leftName} <-> {rightName}";
         }
 
         public string VariablesHaveBeenRenamedWithConflict(string oldName, string newName)
         {
-            return string.Format("{0} <-> {1}", oldName, newName);
+            return $"{oldName} <-> {newName}";
         }
     }
 
@@ -40,10 +40,24 @@ namespace Merger
             NewName = newName;
         }
 
-        public string ClassFullName { get; private set; }
-        public string Method { get; private set; }
-        public string Variable { get; private set; }
-        public string NewName { get; private set; }
+        public string ClassFullName { get; }
+        public string Method { get; }
+        public string Variable { get; }
+        public string NewName { get; }
+    }
+
+    public class MoveMethodCommand : Command
+    {
+        public string ClassFullName { get; }
+        public string Method { get; }
+        public bool MoveUp { get;  }
+
+        public MoveMethodCommand(string classFullName, string method, bool moveUp)
+        {
+            ClassFullName = classFullName;
+            Method = method;
+            MoveUp = moveUp;
+        }
     }
 
     public class ConflictResolver
@@ -52,52 +66,85 @@ namespace Merger
         {
             if (leftCommand is RenameCommand && rightCommand is RenameCommand)
             {
-                var leftRename = leftCommand as RenameCommand;
-                var rightRename = rightCommand as RenameCommand;
-
-                if (leftRename.ClassFullName == rightRename.ClassFullName
-                    && leftRename.Method == rightRename.Method)
+                return Process(dialog, leftCommand as RenameCommand, rightCommand as RenameCommand);
+            }
+            else
+            {
+                if (leftCommand is RenameCommand && rightCommand is MoveMethodCommand)
                 {
-                    if (leftRename.Variable == rightRename.Variable)
+                    return Process(dialog, leftCommand as RenameCommand, rightCommand as MoveMethodCommand);
+                }
+                else
+                {
+                    if (leftCommand is MoveMethodCommand && rightCommand is RenameCommand)
+                        return Process(dialog, rightCommand as RenameCommand, leftCommand as MoveMethodCommand);
+                }
+
+
+                throw new Exception();
+            }
+        }
+
+        private static List<Command> Process
+            (ITalkWithUser dialog,
+            RenameCommand leftCommand,
+            MoveMethodCommand rightCommand)
+        {
+            return new List<Command>() {leftCommand, rightCommand};
+        }
+
+        private static List<Command> Process(
+            ITalkWithUser dialog,
+            RenameCommand leftCommand,
+            RenameCommand rightCommand)
+        {
+            if (leftCommand.ClassFullName == rightCommand.ClassFullName
+                && leftCommand.Method == rightCommand.Method)
+            {
+                if (leftCommand.Variable == rightCommand.Variable)
+                {
+                    if (leftCommand.NewName == rightCommand.NewName)
                     {
-                        if (leftRename.NewName == rightRename.NewName)
-                        {
-                            return new List<Command> { leftRename };
-                        }
-                        else
-                        {
-                            var selectedName = dialog.Ask(new MessagesGenerator().VariableHasBeenRenamedDifferently(leftRename.NewName, rightRename.NewName));
-                            var result = new RenameCommand(leftRename.ClassFullName, leftRename.Method, leftRename.Variable, selectedName);
-                            return new List<Command> { result };
-                        }
+                        return new List<Command> {leftCommand};
                     }
                     else
                     {
-                        if (leftRename.NewName == rightRename.NewName)
-                        {
-                            var newLeftName = dialog.Ask(new MessagesGenerator().VariablesHaveBeenRenamedWithConflict(leftRename.Variable, leftRename.NewName));
-                            var newRightName = dialog.Ask(new MessagesGenerator().VariablesHaveBeenRenamedWithConflict(rightRename.Variable, rightRename.NewName));
-
-                            if (newLeftName == newRightName) throw new Exception();
-
-                            return new List<Command> {
-                            new RenameCommand(leftRename.ClassFullName, leftRename.Method, leftRename.Variable, newLeftName),
-                            new RenameCommand(rightRename.ClassFullName, rightRename.Method, rightRename.Variable, newRightName) };
-                        }
-                        else
-                        {
-                            return new List<Command> { leftCommand, rightCommand };
-                        }
+                        var selectedName =
+                            dialog.Ask(new MessagesGenerator().VariableHasBeenRenamedDifferently(leftCommand.NewName,
+                                rightCommand.NewName));
+                        var result = new RenameCommand(leftCommand.ClassFullName, leftCommand.Method, leftCommand.Variable,
+                            selectedName);
+                        return new List<Command> {result};
                     }
                 }
                 else
                 {
-                    return new List<Command> { leftCommand, rightCommand };
+                    if (leftCommand.NewName == rightCommand.NewName)
+                    {
+                        var newLeftName =
+                            dialog.Ask(new MessagesGenerator().VariablesHaveBeenRenamedWithConflict(leftCommand.Variable,
+                                leftCommand.NewName));
+                        var newRightName =
+                            dialog.Ask(new MessagesGenerator().VariablesHaveBeenRenamedWithConflict(rightCommand.Variable,
+                                rightCommand.NewName));
+
+                        if (newLeftName == newRightName) throw new Exception();
+
+                        return new List<Command>
+                        {
+                            new RenameCommand(leftCommand.ClassFullName, leftCommand.Method, leftCommand.Variable, newLeftName),
+                            new RenameCommand(rightCommand.ClassFullName, rightCommand.Method, rightCommand.Variable, newRightName)
+                        };
+                    }
+                    else
+                    {
+                        return new List<Command> { leftCommand, rightCommand };
+                    }
                 }
             }
             else
             {
-                throw new Exception();
+                return new List<Command> { leftCommand, rightCommand };
             }
         }
     }
